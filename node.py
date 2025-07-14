@@ -30,7 +30,7 @@ class FractalNode(nn.Module):
             x = x.unsqueeze(0)  # Ensure [1, input_size]
         if x.shape[-1] != self.input_size:
             x = x[:, :self.input_size]
-        return self.network(x)
+        return self.network(x)  # Output: [1, output_size]
 
     def hebbian_update(self, inputs, outputs, learning_rate=0.02):
         inputs = torch.tensor(inputs, dtype=torch.float32)
@@ -48,7 +48,7 @@ class FractalNode(nn.Module):
 
     def train_step(self, inputs, target):
         self.optimizer.zero_grad()
-        output = self.forward(inputs)  # Expects [1, input_size], outputs [1, output_size]
+        output = self.forward(inputs)  # Shape: [1, output_size]
         loss = self.criterion(output, target)  # Expects output: [1, 4], target: [1]
         loss.backward()
         self.optimizer.step()
