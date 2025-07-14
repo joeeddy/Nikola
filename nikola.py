@@ -41,7 +41,7 @@ class Nikola:
         return params
 
     def forward(self, inputs):
-        inputs = torch.tensor(inputs, dtype=torch.float32).unsqueeze(0)
+        inputs = torch.tensor(inputs, dtype=torch.float32).unsqueeze(0)  # Ensure [1, input_size]
         layer_outputs = [inputs]
         for level in range(self.depth):
             next_layer_outputs = []
@@ -57,18 +57,18 @@ class Nikola:
                                     for n in nodes:
                                         if n.node_id == prev_node_id:
                                             output = n.forward(layer_outputs[prev_level])
-                                            node_inputs.append(output.squeeze())
+                                            node_inputs.append(output.squeeze(0))  # Remove batch dim for stacking
                     if not node_inputs:
-                        node_inputs = torch.zeros(node.input_size)
+                        node_inputs = torch.zeros(1, node.input_size)
                     else:
                         node_inputs = torch.stack(node_inputs, dim=-1).mean(dim=-1)
-                        if len(node_inputs) < node.input_size:
-                            node_inputs = torch.cat((node_inputs, torch.zeros(node.input_size - len(node_inputs))))
-                        elif len(node_inputs) > node.input_size:
-                            node_inputs = node_inputs[:node.input_size]
+                        if node_inputs.shape[-1] < node.input_size:
+                            node_inputs = torch.cat((node_inputs, torch.zeros(1, node.input_size - node_inputs.shape[-1])), dim=-1)
+                        elif node_inputs.shape[-1] > node.input_size:
+                            node_inputs = node_inputs[:, :node.input_size]
                 output = node.forward(node_inputs)
-                node.hebbian_update(node_inputs, output.squeeze())
-                next_layer_outputs.append(output.squeeze())
+                node.hebbian_update(node_inputs.squeeze(0), output.squeeze(0))  # Pass flattened tensors
+                next_layer_outputs.append(output.squeeze(0))
             layer_outputs.append(torch.stack(next_layer_outputs))
         return torch.argmax(layer_outputs[-1][0]).item()
 
@@ -107,6 +107,8 @@ class Nikola:
                         self.connections.append((new_node.node_id, [n.node_id for n in self.nodes[level]]))
 
     def meta_train(self, inputs, target):
+        inputs = torch.tensor(inputs, dtype=torch.float32).unsqueeze(0)  # Ensure [1, input_size]
+        target = torch.tensor([target], dtype=torch.long)  # Ensure [1]
         original_params = [p.clone().detach() for p in self.get_all_parameters()]
         fast_weights = [p.clone().detach().requires_grad_(True) for p in self.get_all_parameters()]
         loss = 0
@@ -119,8 +121,7 @@ class Nikola:
         for level in self.nodes:
             for node in level:
                 output = node.forward(inputs)
-                target_tensor = torch.tensor([target], dtype=torch.long)
-                loss = node.criterion(output, target_tensor)
+                loss = node.criterion(output, target)
                 loss.backward()
         fast_optimizer.step()
         self.meta_optimizer.zero_grad()
@@ -128,7 +129,7 @@ class Nikola:
         for level in self.nodes:
             for node in level:
                 output = node.forward(inputs)
-                meta_loss += node.criterion(output, torch.tensor([target], dtype=torch.long))
+                meta_loss += node.criterion(output, target)
         meta_loss.backward()
         self.meta_optimizer.step()
         self.self_organize()
