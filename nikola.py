@@ -23,7 +23,7 @@ class Nikola:
             level_nodes = []
             num_nodes = 2 ** level
             for _ in range(num_nodes):
-                input_size = self.inputs_per_node if level == 0 else self.inputs_per_node * (2 ** (level - 1))
+                input_size = self.inputs_per_node if level == 0 else 4  # Higher levels take node outputs (size 4)
                 node = FractalNode(input_size, hidden_size=16, output_size=4, node_id=self.node_id_counter)
                 level_nodes.append(node)
                 self.node_id_counter += 1
@@ -47,7 +47,7 @@ class Nikola:
             next_layer_outputs = []
             for node in self.nodes[level]:
                 if level == 0:
-                    node_inputs = inputs
+                    node_inputs = inputs  # Shape: [1, input_size]
                 else:
                     node_inputs = []
                     for conn in self.connections:
@@ -56,21 +56,21 @@ class Nikola:
                                 for prev_level, nodes in enumerate(self.nodes):
                                     for n in nodes:
                                         if n.node_id == prev_node_id:
-                                            output = n.forward(layer_outputs[prev_level])  # Shape: [1, output_size]
+                                            output = n.forward(layer_outputs[prev_level])  # Shape: [1, 4]
                                             node_inputs.append(output)
                     if not node_inputs:
                         node_inputs = torch.zeros(1, node.input_size)
                     else:
-                        node_inputs = torch.stack(node_inputs, dim=1).mean(dim=1)  # Mean over inputs, keep [1, input_size]
-                        if node_inputs.shape[-1] < node.input_size:
-                            node_inputs = torch.cat((node_inputs, torch.zeros(1, node.input_size - node_inputs.shape[-1])), dim=-1)
-                        elif node_inputs.shape[-1] > node.input_size:
-                            node_inputs = node_inputs[:, :node.input_size]
+                        node_inputs = torch.cat(node_inputs, dim=0)  # Shape: [num_inputs, 4]
+                        node_inputs = node_inputs.mean(dim=0, keepdim=True)  # Shape: [1, 4]
+                        assert node_inputs.shape[-1] == node.input_size, f"Node {node.node_id} input shape {node_inputs.shape}, expected [1, {node.input_size}]"
                 output = node.forward(node_inputs)  # Shape: [1, 4]
+                assert output.shape == (1, 4), f"Node {node.node_id} output shape {output.shape}, expected [1, 4]"
                 node.hebbian_update(node_inputs.squeeze(0), output.squeeze(0))  # Flatten for Hebbian update
                 next_layer_outputs.append(output)  # Keep batched: [1, 4]
-            layer_outputs.append(torch.cat(next_layer_outputs, dim=0))  # Concatenate to [num_nodes, 4]
-        return torch.argmax(layer_outputs[-1][0]).item()  # Take first output for final prediction
+            layer_outputs.append(torch.cat(next_layer_outputs, dim=0))  # Shape: [num_nodes, 4]
+        final_output = layer_outputs[-1][0]  # Shape: [4]
+        return torch.argmax(final_output).item()
 
     def self_organize(self):
         new_connections = []
@@ -115,12 +115,14 @@ class Nikola:
         for level in self.nodes:
             for node in level:
                 output = node.forward(inputs)  # Shape: [1, 4]
+                assert output.shape == (1, 4), f"Node {node.node_id} output shape {output.shape}, expected [1, 4]"
                 loss += node.train_step(inputs, target)
         fast_optimizer = optim.Adam(fast_weights, lr=0.01)
         fast_optimizer.zero_grad()
         for level in self.nodes:
             for node in level:
                 output = node.forward(inputs)  # Shape: [1, 4]
+                assert output.shape == (1, 4), f"Node {node.node_id} output shape {output.shape}, expected [1, 4]"
                 loss = node.criterion(output, target)
                 loss.backward()
         fast_optimizer.step()
@@ -129,6 +131,7 @@ class Nikola:
         for level in self.nodes:
             for node in level:
                 output = node.forward(inputs)  # Shape: [1, 4]
+                assert output.shape == (1, 4), f"Node {node.node_id} output shape {output.shape}, expected [1, 4]"
                 meta_loss += node.criterion(output, target)
         meta_loss.backward()
         self.meta_optimizer.step()
