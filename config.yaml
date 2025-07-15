@@ -1,0 +1,17 @@
+network:
+  depth: 4
+  inputs_per_node: 8
+  hidden_size: 16
+  output_size: 4
+
+training:
+  epochs: 200
+  learning_rate_node: 0.005
+  learning_rate_meta: 0.0005
+  learning_rate_fast: 0.01
+
+evolution:
+  temperature_decay: 0.99
+  prune_threshold: 0.2
+  spawn_threshold: 0.9
+  spawn_chance: 0.1
