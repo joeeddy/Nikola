@@ -30,7 +30,11 @@ class FractalNode(nn.Module):
             x = x.unsqueeze(0)  # Ensure [1, input_size]
         if x.shape[-1] != self.input_size:
             x = x[:, :self.input_size]
-        return self.network(x)  # Output: [1, output_size]
+        output = self.network(x)  # Output: [1, output_size]
+        if output.dim() == 1:
+            output = output.unsqueeze(0)  # Ensure [1, output_size]
+        assert output.shape == (1, self.output_size), f"Node {self.node_id} output shape {output.shape}, expected [1, {self.output_size}]"
+        return output
 
     def hebbian_update(self, inputs, outputs, learning_rate=0.02):
         inputs = torch.tensor(inputs, dtype=torch.float32)
