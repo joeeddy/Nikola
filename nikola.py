@@ -1,201 +1,68 @@
 import torch
 import torch.optim as optim
-import random
-import math
-from node import FractalNode
+from topology import create_fractal_network, self_organize
+from helpers import shape_input
 
 class Nikola:
-    def __init__(self, depth=4, inputs_per_node=8):
+    def __init__(self, depth, inputs_per_node, hidden_size=16, output_size=4, learning_rate_meta=0.0005):
         self.depth = depth
         self.inputs_per_node = inputs_per_node
-        self.nodes = []
-        self.connections = []
-        self.node_id_counter = 0
+        self.hidden_size = hidden_size
+        self.output_size = output_size
         self.temperature = 1.0
-        self.create_fractal_network()
-        self.meta_optimizer = optim.Adam(self.get_all_parameters(), lr=0.0005)
 
-    def create_fractal_network(self):
-        self.nodes = []
-        self.connections = []
-        self.node_id_counter = 0
-        for level in range(self.depth):
-            level_nodes = []
-            num_nodes = 2 ** level
-            for _ in range(num_nodes):
-                input_size = self.inputs_per_node if level == 0 else 4
-                node = FractalNode(input_size, hidden_size=16, output_size=4, node_id=self.node_id_counter)
-                level_nodes.append(node)
-                self.node_id_counter += 1
-            self.nodes.append(level_nodes)
-        for level in range(1, self.depth):
-            for node in self.nodes[level]:
-                prev_nodes = [n.node_id for n in self.nodes[level - 1]]
-                self.connections.append((node.node_id, prev_nodes[:min(self.inputs_per_node, len(prev_nodes))]))
+        self.nodes, self.connections, self.node_id_counter = create_fractal_network(
+            depth, inputs_per_node, hidden_size, output_size
+        )
+        self.meta_optimizer = optim.Adam(self.get_all_parameters(), lr=learning_rate_meta)
 
     def get_all_parameters(self):
         params = []
-        for level in self.nodes:
-            for node in level:
+        for layer in self.nodes:
+            for node in layer:
                 params.extend(node.parameters())
         return params
 
     def forward(self, inputs):
-        inputs = torch.tensor(inputs, dtype=torch.float32)
-        if inputs.dim() == 1:
-            inputs = inputs.unsqueeze(0)  # Ensure [1, input_size]
-        assert inputs.shape == (1, self.inputs_per_node), f"Input shape {inputs.shape}, expected [1, {self.inputs_per_node}]"
+        inputs = shape_input(inputs, self.inputs_per_node)
         layer_outputs = [inputs]
+
         for level in range(self.depth):
             next_layer_outputs = []
             for node in self.nodes[level]:
                 if level == 0:
-                    node_inputs = inputs  # Shape: [1, input_size]
+                    node_inputs = inputs
                 else:
-                    node_inputs = []
-                    for conn in self.connections:
-                        if conn[0] == node.node_id:
-                            for prev_node_id in conn[1]:
-                                for prev_level, nodes in enumerate(self.nodes):
-                                    for n in nodes:
-                                        if n.node_id == prev_node_id:
-                                            output = n.forward(layer_outputs[prev_level])  # Shape: [1, 4]
-                                            assert output.shape == (1, 4), f"Node {n.node_id} output shape {output.shape}, expected [1, 4]"
-                                            node_inputs.append(output)
-                    if not node_inputs:
-                        node_inputs = torch.zeros(1, node.input_size)
-                    else:
-                        node_inputs = torch.cat(node_inputs, dim=0).mean(dim=0, keepdim=True)  # Shape: [1, 4]
-                    assert node_inputs.shape == (1, node.input_size), f"Node {node.node_id} input shape {node_inputs.shape}, expected [1, {node.input_size}]"
-                output = node.forward(node_inputs)  # Shape: [1, 4]
-                assert output.shape == (1, 4), f"Node {node.node_id} output shape {output.shape}, expected [1, 4]"
+                    node_inputs = self.collect_inputs(node.node_id, layer_outputs, level - 1)
+                output = node.forward(node_inputs)
                 node.hebbian_update(node_inputs.squeeze(0), output.squeeze(0))
                 next_layer_outputs.append(output)
             layer_outputs.append(torch.cat(next_layer_outputs, dim=0))
-        final_output = layer_outputs[-1][0]  # Shape: [4]
+
+        final_output = layer_outputs[-1][0]
         return torch.argmax(final_output).item()
 
-    def self_organize(self):
-        new_connections = []
-        for level in range(1, self.depth):
-            for node in self.nodes[level]:
-                conn = [c for c in self.connections if c[0] == node.node_id]
-                if conn:
-                    conn = conn[0]
-                    current_conn_ids = conn[1]
-                    prev_nodes = [n.node_id for n in self.nodes[level - 1]]
-                    new_conn_ids = current_conn_ids
-                    if random.random() < math.exp(-1 / self.temperature):
-                        available = [nid for nid in prev_nodes if nid not in current_conn_ids]
-                        if available:
-                            new_conn_ids = random.sample(prev_nodes, min(self.inputs_per_node, len(prev_nodes)))
-                    current_score = sum(n.connection_weights.get(i, 0) for i in current_conn_ids for n in self.nodes[level - 1])
-                    new_score = sum(n.connection_weights.get(i, 0) for i in new_conn_ids for n in self.nodes[level - 1])
-                    if new_score > current_score or random.random() < math.exp((new_score - current_score) / self.temperature):
-                        new_connections.append((node.node_id, new_conn_ids))
-                    else:
-                        new_connections.append(conn)
-        self.connections = new_connections
-        self.temperature *= 0.99
-        for level in range(self.depth):
-            for node in self.nodes[level]:
-                if len(node.activity_log) > 20 and sum(node.activity_log[-20:]) / 20 < 0.2:
-                    self.nodes[level] = [n for n in self.nodes[level] if n.node_id != node.node_id]
-                    self.connections = [c for c in self.connections if c[0] != node.node_id]
-                elif node.performance > 0.9 and random.random() < 0.1:
-                    new_node = FractalNode(node.input_size, hidden_size=16, output_size=4, node_id=self.node_id_counter)
-                    self.node_id_counter += 1
-                    self.nodes[level].append(new_node)
-                    if level < self.depth - 1:
-                        self.connections.append((new_node.node_id, [n.node_id for n in self.nodes[level]]))
-
     def meta_train(self, inputs, target):
-        inputs = torch.tensor(inputs, dtype=torch.float32)
-        if inputs.dim() == 1:
-            inputs = inputs.unsqueeze(0)  # Shape: [1, input_size]
-        target = torch.tensor([target], dtype=torch.long)  # Shape: [1]
-        assert inputs.shape == (1, self.inputs_per_node), f"Input shape {inputs.shape}, expected [1, {self.inputs_per_node}]"
-        original_params = [p.clone().detach() for p in self.get_all_parameters()]
-        fast_weights = [p.clone().detach().requires_grad_(True) for p in self.get_all_parameters()]
-        loss = 0
+        inputs = shape_input(inputs, self.inputs_per_node)
+        target = torch.tensor([target], dtype=torch.long)
+
         layer_outputs = [inputs]
+        total_loss = 0
+
         for level in range(self.depth):
             next_layer_outputs = []
             for node in self.nodes[level]:
-                if level == 0:
-                    node_inputs = inputs  # Shape: [1, input_size]
-                else:
-                    node_inputs = []
-                    for conn in self.connections:
-                        if conn[0] == node.node_id:
-                            for prev_node_id in conn[1]:
-                                for prev_level, nodes in enumerate(self.nodes):
-                                    for n in nodes:
-                                        if n.node_id == prev_node_id:
-                                            output = n.forward(layer_outputs[prev_level])  # Shape: [1, 4]
-                                            node_inputs.append(output)
-                    if not node_inputs:
-                        node_inputs = torch.zeros(1, node.input_size)
-                    else:
-                        node_inputs = torch.cat(node_inputs, dim=0).mean(dim=0, keepdim=True)  # Shape: [1, 4]
-                    assert node_inputs.shape == (1, node.input_size), f"Node {node.node_id} input shape {node_inputs.shape}, expected [1, {node.input_size}]"
-                output = node.forward(node_inputs)  # Shape: [1, 4]
-                assert output.shape == (1, 4), f"Node {node.node_id} output shape {output.shape}, expected [1, 4]"
-                loss += node.train_step(node_inputs, target)
+                node_inputs = inputs if level == 0 else self.collect_inputs(node.node_id, layer_outputs, level - 1)
+                output = node.forward(node_inputs)
+                loss = node.train_step(node_inputs, target)
+                total_loss += loss
                 next_layer_outputs.append(output)
             layer_outputs.append(torch.cat(next_layer_outputs, dim=0))
-        fast_optimizer = optim.Adam(fast_weights, lr=0.01)
-        fast_optimizer.zero_grad()
-        for level in range(self.depth):
-            for node in self.nodes[level]:
-                if level == 0:
-                    node_inputs = inputs
-                else:
-                    node_inputs = []
-                    for conn in self.connections:
-                        if conn[0] == node.node_id:
-                            for prev_node_id in conn[1]:
-                                for prev_level, nodes in enumerate(self.nodes):
-                                    for n in nodes:
-                                        if n.node_id == prev_node_id:
-                                            output = n.forward(layer_outputs[prev_level])
-                                            node_inputs.append(output)
-                    if not node_inputs:
-                        node_inputs = torch.zeros(1, node.input_size)
-                    else:
-                        node_inputs = torch.cat(node_inputs, dim=0).mean(dim=0, keepdim=True)
-                    assert node_inputs.shape == (1, node.input_size), f"Node {node.node_id} input shape {node_inputs.shape}, expected [1, {node.input_size}]"
-                output = node.forward(node_inputs)  # Shape: [1, 4]
-                assert output.shape == (1, 4), f"Node {node.node_id} output shape {output.shape}, expected [1, 4]"
-                node_loss = node.criterion(output, target)
-                node_loss.backward()
-                loss += node_loss.item()
-        fast_optimizer.step()
+
         self.meta_optimizer.zero_grad()
         meta_loss = 0
+
         for level in range(self.depth):
             for node in self.nodes[level]:
-                if level == 0:
-                    node_inputs = inputs
-                else:
-                    node_inputs = []
-                    for conn in self.connections:
-                        if conn[0] == node.node_id:
-                            for prev_node_id in conn[1]:
-                                for prev_level, nodes in enumerate(self.nodes):
-                                    for n in nodes:
-                                        if n.node_id == prev_node_id:
-                                            output = n.forward(layer_outputs[prev_level])
-                                            node_inputs.append(output)
-                    if not node_inputs:
-                        node_inputs = torch.zeros(1, node.input_size)
-                    else:
-                        node_inputs = torch.cat(node_inputs, dim=0).mean(dim=0, keepdim=True)
-                    assert node_inputs.shape == (1, node.input_size), f"Node {node.node_id} input shape {node_inputs.shape}, expected [1, {node.input_size}]"
-                output = node.forward(node_inputs)  # Shape: [1, 4]
-                assert output.shape == (1, 4), f"Node {node.node_id} output shape {output.shape}, expected [1, 4]"
-                meta_loss += node.criterion(output, target)
-        meta_loss.backward()
-        self.meta_optimizer.step()
-        self.self_organize()
-        return meta_loss.item()
+                node_inputs = inputs if level == 0 else self.collect_inputs(node.node_id, layer_outputs, level - 1)
+                output = node.forward
