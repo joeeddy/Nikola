@@ -72,3 +72,17 @@ def self_organize(nodes, connections, temperature, inputs_per_node, output_size,
         nodes[level].extend(to_add)
 
     return temperature, node_id_counter
+    def get_topology_graph(depth=4):
+    import networkx as nx
+    G = nx.Graph()
+    
+    def add_fractal_nodes(parent, level):
+        if level > depth:
+            return
+        for i in range(2):
+            child = f"{parent}.{i}" if parent else str(i)
+            G.add_edge(parent, child) if parent else G.add_node(child)
+            add_fractal_nodes(child, level + 1)
+    
+    add_fractal_nodes("", 1)
+    return G
