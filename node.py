@@ -58,3 +58,8 @@ class FractalNode(nn.Module):
         self.optimizer.step()
         self.performance = 0.9 * self.performance + 0.1 * (1 - loss.item())
         return loss.item()
+    def get_node_activity_map():
+    import numpy as np
+    # Simulate a 10x10 matrix of activity levels (for visualization)
+    return np.random.rand(10, 10)
+
