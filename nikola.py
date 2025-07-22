@@ -70,4 +70,11 @@ class Nikola:
             for node in self.nodes[level]:
                 node_inputs = inputs if level == 0 else self.collect_inputs(node.node_id, layer_outputs, level - 1)
                 output = node.forward(node_inputs)
-                # Assuming you want to calculate meta_loss here, code missing?
+                # You probably want to compute some loss here and backpropagate
+                # Example (pseudo-code):
+                # meta_loss += some_loss_function(output, target)
+        # After computing meta_loss, do:
+        # meta_loss.backward()
+        # self.meta_optimizer.step()
+
+        # Note: The current snippet is incomplete here; add your loss calculation and optimizer steps as needed.
