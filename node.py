@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import numpy as np
 
 class FractalNode(nn.Module):
     def __init__(self, input_size, hidden_size=16, output_size=4, node_id=0):
@@ -58,8 +59,10 @@ class FractalNode(nn.Module):
         self.optimizer.step()
         self.performance = 0.9 * self.performance + 0.1 * (1 - loss.item())
         return loss.item()
-    def get_node_activity_map():
-    import numpy as np
+
+def get_node_activity_map():
     # Simulate a 10x10 matrix of activity levels (for visualization)
     return np.random.rand(10, 10)
+         
 
+    
