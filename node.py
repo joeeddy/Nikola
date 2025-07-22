@@ -10,6 +10,8 @@ class FractalNode(nn.Module):
         self.input_size = input_size
         self.hidden_size = hidden_size
         self.output_size = output_size
+
+        # Define neural network layers
         self.network = nn.Sequential(
             nn.Linear(input_size, hidden_size),
             nn.ReLU(),
@@ -18,26 +20,43 @@ class FractalNode(nn.Module):
             nn.Linear(hidden_size // 2, output_size),
             nn.Softmax(dim=-1)
         )
+
+        # Optimizer and loss criterion
         self.optimizer = optim.Adam(self.parameters(), lr=0.005)
         self.criterion = nn.CrossEntropyLoss()
+
+        # Connection weights (for Hebbian update)
         self.connection_weights = {}
+        # Activity log for monitoring
         self.activity_log = []
+        # Performance metric
         self.performance = 0.0
 
+        # To store output after forward pass (used externally)
+        self.output = None
+
     def forward(self, x):
+        """
+        Forward pass through the network.
+        """
         if not isinstance(x, torch.Tensor):
             x = torch.tensor(x, dtype=torch.float32)
         if x.dim() == 1:
-            x = x.unsqueeze(0)  # Ensure [1, input_size]
+            x = x.unsqueeze(0)  # Ensure batch dimension
         if x.shape[-1] != self.input_size:
             x = x[:, :self.input_size]
-        output = self.network(x)  # Output: [1, output_size]
+        output = self.network(x)  # Output shape: [1, output_size]
         if output.dim() == 1:
-            output = output.unsqueeze(0)  # Ensure [1, output_size]
-        assert output.shape == (1, self.output_size), f"Node {self.node_id} output shape {output.shape}, expected [1, {self.output_size}]"
+            output = output.unsqueeze(0)
+        assert output.shape == (1, self.output_size), \
+            f"Node {self.node_id} output shape {output.shape}, expected [(1, {self.output_size})]"
+        self.output = output  # Store for external access
         return output
 
     def hebbian_update(self, inputs, outputs, learning_rate=0.02):
+        """
+        Update connection weights based on correlation between inputs and outputs.
+        """
         inputs = torch.tensor(inputs, dtype=torch.float32)
         outputs = torch.tensor(outputs, dtype=torch.float32)
         correlation = torch.mean(inputs * outputs).item()
@@ -52,17 +71,25 @@ class FractalNode(nn.Module):
             self.activity_log.pop(0)
 
     def train_step(self, inputs, target):
-        self.optimizer.zero_grad()
-        output = self.forward(inputs)  # Shape: [1, output_size]
-        loss = self.criterion(output, target)  # Expects output: [1, 4], target: [1]
-        loss.backward()
-        self.optimizer.step()
-        self.performance = 0.9 * self.performance + 0.1 * (1 - loss.item())
-        return loss.item()
+        """
+        Compute the loss, but do NOT perform backpropagation or optimizer update.
+        Returns the loss value.
+        """
+        # Ensure inputs are tensor
+        if not isinstance(inputs, torch.Tensor):
+            inputs = torch.tensor(inputs, dtype=torch.float32)
+        # Forward pass
+        output = self.forward(inputs)
+        # Compute loss
+        loss = self.criterion(output, target)
+        return loss
+
+    # Optional: You might want to add a method to perform actual training update
+    # def update_parameters(self, loss):
+    #     self.optimizer.zero_grad()
+    #     loss.backward()
+    #     self.optimizer.step()
 
 def get_node_activity_map():
     # Simulate a 10x10 matrix of activity levels (for visualization)
     return np.random.rand(10, 10)
-         
-
-    
