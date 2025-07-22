@@ -15,9 +15,11 @@ class Nikola:
             depth, inputs_per_node, hidden_size, output_size
         )
         self.meta_optimizer = optim.Adam(self.get_all_parameters(), lr=learning_rate_meta)
+
     def collect_inputs(self, node_id, layer_outputs, level):
-    # Simple placeholder: just return the previous layer's outputs
-    return layer_outputs[level]
+        # Simple placeholder: just return the previous layer's outputs
+        return layer_outputs[level]
+
     def get_all_parameters(self):
         params = []
         for layer in self.nodes:
@@ -67,4 +69,5 @@ class Nikola:
         for level in range(self.depth):
             for node in self.nodes[level]:
                 node_inputs = inputs if level == 0 else self.collect_inputs(node.node_id, layer_outputs, level - 1)
-                output = node.forward
+                output = node.forward(node_inputs)
+                # Assuming you want to calculate meta_loss here, code missing?
