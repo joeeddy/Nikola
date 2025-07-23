@@ -54,14 +54,14 @@ class FractalNode(nn.Module):
         print(f"Node {self.node_id} - input shape: {x.shape}")
         print(f"Node {self.node_id} - output shape: {output.shape}")
 
-        # Ensure output is batch size 1
-if output.dim() == 1:
-    output = output.unsqueeze(0)
-# Accept batch size > 1
-assert output.shape[1] == self.output_size, \
-    f"Node {self.node_id} output shape {output.shape}, expected batch size > 1 with shape [(batch, {self.output_size})]"
-self.output = output
-return output
+        # Ensure output is batch size 1 (if output is 1D)
+        if output.dim() == 1:
+            output = output.unsqueeze(0)
+        # Accept batch size > 1
+        assert output.shape[1] == self.output_size, \
+            f"Node {self.node_id} output shape {output.shape}, expected batch size > 1 with shape [(batch, {self.output_size})]"
+        self.output = output
+        return output
 
     def hebbian_update(self, inputs, outputs, learning_rate=0.02):
         """
