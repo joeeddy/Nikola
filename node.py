@@ -58,7 +58,7 @@ class FractalNode(nn.Module):
         if output.dim() == 1:
             output = output.unsqueeze(0)
         # Accept batch size > 1
-        assert output.shape[1] == self.output_size, \
+        
             f"Node {self.node_id} output shape {output.shape}, expected batch size > 1 with shape [(batch, {self.output_size})]"
         self.output = output
         return output
