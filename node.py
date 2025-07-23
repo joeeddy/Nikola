@@ -57,10 +57,10 @@ class FractalNode(nn.Module):
         # Ensure output is batch size 1
 if output.dim() == 1:
     output = output.unsqueeze(0)
-# Modify the assertion to accept batch size > 1
+# Accept batch size > 1
 assert output.shape[1] == self.output_size, \
-    f"Node {self.node_id} output shape {output.shape}, expected batch size 1 with shape [(1, {self.output_size})]"
-self.output = output  # Store for external access
+    f"Node {self.node_id} output shape {output.shape}, expected batch size > 1 with shape [(batch, {self.output_size})]"
+self.output = output
 return output
 
     def hebbian_update(self, inputs, outputs, learning_rate=0.02):
