@@ -39,15 +39,25 @@ class FractalNode(nn.Module):
         """
         Forward pass through the network.
         """
+        # Convert input if not tensor
         if not isinstance(x, torch.Tensor):
             x = torch.tensor(x, dtype=torch.float32)
+        # Ensure batch dimension
         if x.dim() == 1:
-            x = x.unsqueeze(0)  # Ensure batch dimension
+            x = x.unsqueeze(0)
+        # Slice input if needed
         if x.shape[-1] != self.input_size:
             x = x[:, :self.input_size]
-        output = self.network(x)  # Output shape: [1, output_size]
+        output = self.network(x)  # Output shape: [batch_size, output_size]
+
+        # Debug prints
+        print(f"Node {self.node_id} - input shape: {x.shape}")
+        print(f"Node {self.node_id} - output shape: {output.shape}")
+
+        # Ensure output is batch size 1
         if output.dim() == 1:
             output = output.unsqueeze(0)
+        # Assertion (can be modified if batch > 1 is acceptable)
         assert output.shape == (1, self.output_size), \
             f"Node {self.node_id} output shape {output.shape}, expected [(1, {self.output_size})]"
         self.output = output  # Store for external access
@@ -84,11 +94,11 @@ class FractalNode(nn.Module):
         loss = self.criterion(output, target)
         return loss
 
-    # Optional: You might want to add a method to perform actual training update
-    # def update_parameters(self, loss):
-    #     self.optimizer.zero_grad()
-    #     loss.backward()
-    #     self.optimizer.step()
+# Optional: You might want to add a method to perform actual training update
+# def update_parameters(self, loss):
+#     self.optimizer.zero_grad()
+#     loss.backward()
+#     self.optimizer.step()
 
 def get_node_activity_map():
     # Simulate a 10x10 matrix of activity levels (for visualization)
