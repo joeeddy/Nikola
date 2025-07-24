@@ -28,6 +28,7 @@ class Nikola:
         return params
 
     def forward(self, inputs):
+        # Ensure inputs are correctly shaped
         inputs = shape_input(inputs, self.inputs_per_node)
         layer_outputs = [inputs]
 
@@ -39,42 +40,46 @@ class Nikola:
                 else:
                     node_inputs = self.collect_inputs(node.node_id, layer_outputs, level - 1)
                 output = node.forward(node_inputs)
+                # Update Hebbian connections
+                # Squeeze batch dimension for hebbian_update
                 node.hebbian_update(node_inputs.squeeze(0), output.squeeze(0))
                 next_layer_outputs.append(output)
+            # Concatenate outputs along batch dimension
             layer_outputs.append(torch.cat(next_layer_outputs, dim=0))
-
-        final_output = layer_outputs[-1][0]
-        return torch.argmax(final_output).item()
+        
+        # Return the entire batch of final outputs
+        return layer_outputs[-1]
 
     def meta_train(self, inputs, target):
+        # Prepare inputs and target
         inputs = shape_input(inputs, self.inputs_per_node)
         target = torch.tensor([target], dtype=torch.long)
 
         layer_outputs = [inputs]
         total_loss = 0
 
+        # Forward pass through each layer
         for level in range(self.depth):
             next_layer_outputs = []
             for node in self.nodes[level]:
-                node_inputs = inputs if level == 0 else self.collect_inputs(node.node_id, layer_outputs, level - 1)
+                if level == 0:
+                    node_inputs = inputs
+                else:
+                    node_inputs = self.collect_inputs(node.node_id, layer_outputs, level - 1)
                 output = node.forward(node_inputs)
                 loss = node.train_step(node_inputs, target)
+                # Accumulate loss
                 total_loss += loss
                 next_layer_outputs.append(output)
+            # Concatenate for next layer
             layer_outputs.append(torch.cat(next_layer_outputs, dim=0))
-
+        
+        # Backpropagation for meta-optimizer
         self.meta_optimizer.zero_grad()
-        meta_loss = 0
+        # Compute meta loss, e.g., mean over nodes
+        meta_loss = total_loss / (self.depth * len(self.nodes[-1]))
+        meta_loss.backward()
+        self.meta_optimizer.step()
 
-        for level in range(self.depth):
-            for node in self.nodes[level]:
-                node_inputs = inputs if level == 0 else self.collect_inputs(node.node_id, layer_outputs, level - 1)
-                output = node.forward(node_inputs)
-                # You probably want to compute some loss here and backpropagate
-                # Example (pseudo-code):
-                # meta_loss += some_loss_function(output, target)
-        # After computing meta_loss, do:
-        # meta_loss.backward()
-        # self.meta_optimizer.step()
-
-        # Note: The current snippet is incomplete here; add your loss calculation and optimizer steps as needed.
+        return meta_loss.item()
+          
