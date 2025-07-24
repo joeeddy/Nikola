@@ -53,7 +53,9 @@ class Nikola:
     def meta_train(self, inputs, target):
         # Prepare inputs and target
         inputs = shape_input(inputs, self.inputs_per_node)
-        target = torch.tensor([target], dtype=torch.long)
+        # Match batch size of target to inputs
+        batch_size = inputs.shape[0]
+        target = torch.tensor([target] * batch_size, dtype=torch.long)
 
         layer_outputs = [inputs]
         total_loss = 0
@@ -67,6 +69,7 @@ class Nikola:
                 else:
                     node_inputs = self.collect_inputs(node.node_id, layer_outputs, level - 1)
                 output = node.forward(node_inputs)
+                # Compute loss for this node
                 loss = node.train_step(node_inputs, target)
                 # Accumulate loss
                 total_loss += loss
@@ -82,4 +85,3 @@ class Nikola:
         self.meta_optimizer.step()
 
         return meta_loss.item()
-          
