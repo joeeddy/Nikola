@@ -21,45 +21,44 @@ class FractalNode(nn.Module):
             nn.Softmax(dim=-1)
         )
 
-        # Optimizer and loss criterion
+        # Optimizer for this node
         self.optimizer = optim.Adam(self.parameters(), lr=0.005)
+
+        # Loss criterion
         self.criterion = nn.CrossEntropyLoss()
 
-        # Connection weights (for Hebbian update)
-        self.connection_weights = {}
+        # Connection weights for Hebbian update (optional, example)
+        self.connection_weights = {}  # key: input index, value: weight
         # Activity log for monitoring
         self.activity_log = []
-        # Performance metric
+        # Performance metric (could be accuracy or other)
         self.performance = 0.0
 
-        # To store output after forward pass (used externally)
+        # Store output after forward pass (used externally)
         self.output = None
 
     def forward(self, x):
         """
         Forward pass through the network.
         """
-        # Convert input if not tensor
+        # Ensure input is tensor
         if not isinstance(x, torch.Tensor):
             x = torch.tensor(x, dtype=torch.float32)
+
         # Ensure batch dimension
         if x.dim() == 1:
             x = x.unsqueeze(0)
+
         # Slice input if needed
         if x.shape[-1] != self.input_size:
             x = x[:, :self.input_size]
-        output = self.network(x)  # Output shape: [batch_size, output_size]
 
-        # Debug prints
-        print(f"Node {self.node_id} - input shape: {x.shape}")
-        print(f"Node {self.node_id} - output shape: {output.shape}")
+        output = self.network(x)
 
-        # Ensure output is batch size 1 (if output is 1D)
-        if output.dim() == 1:
-            output = output.unsqueeze(0)
-        # Accept batch size > 1
-        
-            f"Node {self.node_id} output shape {output.shape}, expected batch size > 1 with shape [(batch, {self.output_size})]"
+        # Debug prints (optional)
+        # print(f"Node {self.node_id} - input shape: {x.shape}")
+        # print(f"Node {self.node_id} - output shape: {output.shape}")
+
         self.output = output
         return output
 
@@ -67,39 +66,44 @@ class FractalNode(nn.Module):
         """
         Update connection weights based on correlation between inputs and outputs.
         """
-        inputs = torch.tensor(inputs, dtype=torch.float32)
-        outputs = torch.tensor(outputs, dtype=torch.float32)
+        # Convert to tensors if needed
+        if not isinstance(inputs, torch.Tensor):
+            inputs = torch.tensor(inputs, dtype=torch.float32)
+        if not isinstance(outputs, torch.Tensor):
+            outputs = torch.tensor(outputs, dtype=torch.float32)
+
+        # Calculate correlation (simplified example)
         correlation = torch.mean(inputs * outputs).item()
+
+        # Update connection weights (example logic)
         for i in range(len(inputs)):
             if i in self.connection_weights:
                 self.connection_weights[i] += learning_rate * correlation
+                # Clamp weights
                 self.connection_weights[i] = max(0.2, min(1.0, self.connection_weights[i]))
             else:
                 self.connection_weights[i] = 0.5
+
+        # Log activity
         self.activity_log.append(correlation)
         if len(self.activity_log) > 20:
             self.activity_log.pop(0)
 
-    def train_step(self, inputs, target):
+    def train(self, inputs, target):
         """
-        Compute the loss, but do NOT perform backpropagation or optimizer update.
+        Perform a training step: zero grad, forward, compute loss, backward, optimizer step.
         Returns the loss value.
         """
-        # Ensure inputs are tensor
-        if not isinstance(inputs, torch.Tensor):
-            inputs = torch.tensor(inputs, dtype=torch.float32)
+        self.optimizer.zero_grad()
+
         # Forward pass
         output = self.forward(inputs)
+
         # Compute loss
         loss = self.criterion(output, target)
-        return loss
 
-# Optional: You might want to add a method to perform actual training update
-# def update_parameters(self, loss):
-#     self.optimizer.zero_grad()
-#     loss.backward()
-#     self.optimizer.step()
+        # Backward and optimize
+        loss.backward()
+        self.optimizer.step()
 
-def get_node_activity_map():
-    # Simulate a 10x10 matrix of activity levels (for visualization)
-    return np.random.rand(10, 10)
+        return loss.item()
